@@ -1,3 +1,3 @@
 import init from "./lib/wa.js";
 
-init('beta');
+init(process.env.CLIENT_ID || "default");

@@ -2,9 +2,15 @@ import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Brows
 import logger from './logger.js'
 import messageHandler from '../handler/message.js'
 import qrcode from 'qrcode-terminal'
+import { ContactManager } from '../utils/contact.js'
+import type { SocketWrapper } from '../types/socket.js'
 
 const init = async (clientId: string) => {
     const {state, saveCreds} = await useMultiFileAuthState(`auth_info/${clientId}`)
+    
+    // Initialize contact manager
+    
+    
     const sock = makeWASocket({
         logger,
         auth: {
@@ -20,7 +26,11 @@ const init = async (clientId: string) => {
         //     }
         // }
         browser: Browsers.macOS('NEO')
-    })
+    }) as SocketWrapper
+    
+    sock.contactManager = new ContactManager(clientId);
+    sock.contactManager.load();
+    sock.contactManager.startAutoSave();
 
     sock.ev.on('connection.update', (update) => {
         if(!!update.qr){
@@ -28,6 +38,10 @@ const init = async (clientId: string) => {
         }
         const {connection, lastDisconnect} = update
         if(connection === 'close') {
+            // Save contacts and stop auto-save before closing
+            sock.contactManager.save();
+            sock.contactManager.stopAutoSave();
+            
             const shouldReconnect = (lastDisconnect?.error as any)?.output?.statusCode !== DisconnectReason.loggedOut
             console.log('connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect)
             // reconnect if not logged out

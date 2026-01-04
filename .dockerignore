@@ -1,0 +1,27 @@
+# Ignore built files (will be built inside Docker)
+dist
+node_modules
+
+# Ignore git
+.git
+.gitignore
+
+# Ignore logs
+*.log
+npm-debug.log*
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE
+.vscode
+.idea
+
+# Ignore Docker files
+Dockerfile
+.dockerignore
+
+# Ignore README and docs
+README.md
+*.md
