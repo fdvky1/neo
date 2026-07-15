@@ -17,7 +17,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-w -s" -o /app/neo .
 # Stage: prod
 FROM alpine:latest AS prod
 
-# Install required tools (webpmux via libwebp-tools, ffmpeg)
+# Install required tools (cwebp/gif2webp via libwebp-tools, ffmpeg, imagemagick)
 RUN apk add --no-cache \
     ffmpeg \
     libwebp-tools \
