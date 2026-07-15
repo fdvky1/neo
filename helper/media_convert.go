@@ -51,21 +51,3 @@ func ConvertVideoToWebp(vidData []byte) ([]byte, error) {
 
 	return os.ReadFile(webpPath)
 }
-
-func InjectExif(webpData []byte, exifPath string) ([]byte, error) {
-	webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", uuid.New().String()))
-	defer os.Remove(webpPath)
-
-	tmpWebp := webpPath + ".tmp.webp"
-	if err := os.WriteFile(tmpWebp, webpData, 0644); err != nil {
-		return nil, err
-	}
-	defer os.Remove(tmpWebp)
-
-	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
-	if err := webpmuxCmd.Run(); err != nil {
-		return nil, fmt.Errorf("webpmux failed: %w", err)
-	}
-
-	return os.ReadFile(webpPath)
-}
