@@ -15,7 +15,7 @@ var Ping = &core.Command{
 	Aliases:     []string{"test", "tes", "p"},
 	Category:    "general",
 	Description: "Check bot response time",
-	Permissions: []core.Permission{core.PermissionGroupOnly},
+	// Permissions: []core.Permission{core.PermissionGroupOnly},
 	Run: func(ctx *hc.Ctx) {
 		t := ctx.Event().Info.Timestamp
 		speed := time.Since(t).Milliseconds()
