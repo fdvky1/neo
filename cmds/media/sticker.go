@@ -18,7 +18,7 @@ var Sticker = &core.Command{
 	Category:    "media",
 	Description: "Create sticker from image/video or rewrite existing sticker EXIF",
 	Run: func(ctx *hc.Ctx) {
-		ctx.React("👌")
+		// go ctx.React("👌")
 
 		exifPath, cleanupExif := helper.ResolveExif(ctx.Arguments())
 		defer func() {
