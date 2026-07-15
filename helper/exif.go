@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,54 +20,82 @@ type exifData struct {
 }
 
 type webpExif struct {
-	AppId string   `json:"app-id"`
-	Ext   exifData `json:"ext"`
+	AppId string    `json:"app-id"`
+	Ext   *exifData `json:"ext,omitempty"`
+}
+
+// Added matching writeUIntLE from F-BOT_GO reference
+func writeUIntLE(buffer []byte, value, offset, byteLength int64) {
+	slice := make([]byte, byteLength)
+	val := new(big.Int)
+	val.SetUint64(uint64(value))
+	valBytes := val.Bytes()
+
+	tmp := make([]byte, len(valBytes))
+	for i := range valBytes {
+		tmp[i] = valBytes[len(valBytes)-1-i]
+	}
+	copy(slice, tmp)
+	copy(buffer[offset:], slice)
+}
+
+func createMetadataBytes(packName, publisher string) []byte {
+	exifObj := webpExif{
+		AppId: "com.whatsapp.app",
+		Ext: &exifData{
+			StickerPackId:        "com.whatsapp.app",
+			StickerPackName:      packName,
+			StickerPackPublisher: publisher,
+			IsAvatarSticker:      0,
+		},
+	}
+
+	exifJson, err := json.Marshal(exifObj)
+	if err != nil {
+		log.Printf("Failed to marshal EXIF: %v", err)
+		return nil
+	}
+
+	// WebP EXIF JSON string representation inside the file
+	bit := []byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00}
+	bit = append(bit, exifJson...)
+
+	// Crucial fix: Inject JSON string length at offset 14 (4 bytes)
+	writeUIntLE(bit, int64(len(exifJson)), 14, 4)
+
+	return bit
 }
 
 func getOrCreateDefaultExif() string {
 	defaultExifPath := "temp/default.exif"
 
-	// Create temp directory if it doesn't exist
 	if err := os.MkdirAll("temp", 0755); err != nil {
 		log.Printf("Failed to create temp directory: %v", err)
 		return ""
 	}
 
-	if _, err := os.Stat(defaultExifPath); os.IsNotExist(err) {
-		packName := os.Getenv("STICKER_NAME")
-		if packName == "" {
-			packName = "Bot"
-		}
-
-		publisher := os.Getenv("STICKER_PUBLISHER")
-		if publisher == "" {
-			publisher = "Bot"
-		}
-
-		exifObj := webpExif{
-			AppId: "com.whatsapp.app",
-			Ext: exifData{
-				StickerPackId:        "com.whatsapp.app",
-				StickerPackName:      packName,
-				StickerPackPublisher: publisher,
-				IsAvatarSticker:      0,
-			},
-		}
-
-		exifJson, err := json.Marshal(exifObj)
-		if err != nil {
-			log.Printf("Failed to marshal default EXIF: %v", err)
-			return ""
-		}
-
-		// WebP EXIF JSON string representation inside the file
-		exifContent := append([]byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00}, exifJson...)
-
-		if err := os.WriteFile(defaultExifPath, exifContent, 0644); err != nil {
-			log.Printf("Failed to write default EXIF: %v", err)
-			return ""
-		}
+	// ALWAYS recreate temp/default.exif just in case previous boots were corrupted
+	// This corrects broken instances locally instantly
+	packName := os.Getenv("STICKER_NAME")
+	if packName == "" {
+		packName = "Bot"
 	}
+
+	publisher := os.Getenv("STICKER_PUBLISHER")
+	if publisher == "" {
+		publisher = "Bot"
+	}
+
+	exifContent := createMetadataBytes(packName, publisher)
+	if exifContent == nil {
+		return ""
+	}
+
+	if err := os.WriteFile(defaultExifPath, exifContent, 0644); err != nil {
+		log.Printf("Failed to write default EXIF: %v", err)
+		return ""
+	}
+
 	return defaultExifPath
 }
 
@@ -88,23 +117,10 @@ func ResolveExif(args []string) (string, bool) {
 		return getOrCreateDefaultExif(), false
 	}
 
-	exifObj := webpExif{
-		AppId: "com.whatsapp.app",
-		Ext: exifData{
-			StickerPackId:        "com.whatsapp.app",
-			StickerPackName:      packName,
-			StickerPackPublisher: publisher,
-			IsAvatarSticker:      0,
-		},
-	}
-
-	exifJson, err := json.Marshal(exifObj)
-	if err != nil {
-		log.Printf("Failed to marshal dynamic EXIF: %v", err)
+	exifContent := createMetadataBytes(packName, publisher)
+	if exifContent == nil {
 		return getOrCreateDefaultExif(), false
 	}
-
-	exifContent := append([]byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00}, exifJson...)
 
 	id := uuid.New().String()
 	tempPath := filepath.Join("temp", fmt.Sprintf("%s.exif", id))
