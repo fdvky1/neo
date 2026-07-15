@@ -12,16 +12,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type exifData struct {
-	StickerPackId        string `json:"sticker-pack-id"`
-	StickerPackName      string `json:"sticker-pack-name"`
-	StickerPackPublisher string `json:"sticker-pack-publisher"`
-	IsAvatarSticker      int    `json:"is-avatar-sticker"`
-}
-
-type webpExif struct {
-	AppId string    `json:"app-id"`
-	Ext   *exifData `json:"ext,omitempty"`
+type StickerMetadata struct {
+	PackId    string   `json:"sticker-pack-id"`
+	Name      string   `json:"sticker-pack-name"`
+	Publisher string   `json:"sticker-pack-publisher"`
+	Emojis    []string `json:"emojis,omitempty"`
 }
 
 // Added matching writeUIntLE from F-BOT_GO reference
@@ -40,14 +35,11 @@ func writeUIntLE(buffer []byte, value, offset, byteLength int64) {
 }
 
 func createMetadataBytes(packName, publisher string) []byte {
-	exifObj := webpExif{
-		AppId: "com.whatsapp.app",
-		Ext: &exifData{
-			StickerPackId:        "com.whatsapp.app",
-			StickerPackName:      packName,
-			StickerPackPublisher: publisher,
-			IsAvatarSticker:      0,
-		},
+	exifObj := StickerMetadata{
+		PackId:    "com.wa.bot.sticker", // or generic ID
+		Name:      packName,
+		Publisher: publisher,
+		Emojis:    []string{"😀"},
 	}
 
 	exifJson, err := json.Marshal(exifObj)
