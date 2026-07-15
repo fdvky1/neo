@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	hc "neo/context"
 	"neo/core"
@@ -20,12 +21,28 @@ var Sticker = &core.Command{
 	Run: func(ctx *hc.Ctx) {
 		// go ctx.React("👌")
 
-		exifPath, cleanupExif := helper.ResolveExif(ctx.Arguments())
-		defer func() {
-			if cleanupExif {
-				os.Remove(exifPath)
+		var packName, publisher string
+		args := ctx.Arguments()
+
+		packName = os.Getenv("STICKER_NAME")
+		if packName == "" {
+			packName = "Bot"
+		}
+		publisher = os.Getenv("STICKER_PUBLISHER")
+		if publisher == "" {
+			publisher = "Bot"
+		}
+
+		if len(args) > 0 {
+			argsStr := strings.Join(args, " ")
+			parts := strings.Split(argsStr, "|")
+			packName = strings.TrimSpace(parts[0])
+			if len(parts) > 1 {
+				publisher = strings.TrimSpace(parts[1])
+			} else {
+				publisher = ""
 			}
-		}()
+		}
 
 		msg := ctx.Message()
 		quoted := hc.GetQuotedMessage(msg)
@@ -66,7 +83,7 @@ var Sticker = &core.Command{
 			return
 		}
 
-		finalSticker, err := helper.InjectExif(rawWebp, exifPath)
+		finalSticker, err := helper.InjectExif(rawWebp, packName, publisher)
 		if err != nil {
 			ctx.Reply(fmt.Sprintf("error injecting EXIF: %v", err))
 			return
