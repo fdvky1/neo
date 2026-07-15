@@ -1,0 +1,6 @@
+*.db
+.env
+doc.json
+neo
+testing/
+temp/
