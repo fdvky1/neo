@@ -66,6 +66,29 @@ func WithReply(evt *events.Message) *waE2E.ContextInfo {
 	}
 }
 
+// GetQuotedStanzaID returns the stanza ID of the message being replied to, if any.
+func GetQuotedStanzaID(m *waE2E.Message) string {
+	if m == nil {
+		return ""
+	}
+	switch {
+	case m.GetExtendedTextMessage().GetContextInfo() != nil:
+		return m.GetExtendedTextMessage().GetContextInfo().GetStanzaID()
+	case m.GetImageMessage().GetContextInfo() != nil:
+		return m.GetImageMessage().GetContextInfo().GetStanzaID()
+	case m.GetVideoMessage().GetContextInfo() != nil:
+		return m.GetVideoMessage().GetContextInfo().GetStanzaID()
+	case m.GetDocumentMessage().GetContextInfo() != nil:
+		return m.GetDocumentMessage().GetContextInfo().GetStanzaID()
+	case m.GetAudioMessage().GetContextInfo() != nil:
+		return m.GetAudioMessage().GetContextInfo().GetStanzaID()
+	case m.GetStickerMessage().GetContextInfo() != nil:
+		return m.GetStickerMessage().GetContextInfo().GetStanzaID()
+	default:
+		return ""
+	}
+}
+
 // ParseJID parses a JID string, adding @s.whatsapp.net if no server is specified.
 func ParseJID(arg string) (waTypes.JID, bool) {
 	if arg == "" {

@@ -26,10 +26,19 @@ type Command struct {
 // via init() — see neo/cmds for the registration pattern.
 var Default = New()
 
+type Middleware func(ctx *hc.Ctx) bool
+
 type Handler struct {
-	mu       sync.RWMutex
-	commands map[string]*Command
-	prefixes []string
+	mu          sync.RWMutex
+	commands    map[string]*Command
+	prefixes    []string
+	middlewares []Middleware
+}
+
+func (h *Handler) Use(fn Middleware) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.middlewares = append(h.middlewares, fn)
 }
 
 func New(prefixes ...string) *Handler {
@@ -92,6 +101,17 @@ func (h *Handler) processMessage(client *whatsmeow.Client, evt *events.Message) 
 
 	text := hc.ParseMessageText(evt)
 	prefix, cmd, args, isCmd := parseCommand(text, h.prefixes)
+	ctx := hc.NewCtx(client, evt, prefix, cmd, args)
+
+	h.mu.RLock()
+	middlewares := append([]Middleware(nil), h.middlewares...)
+	h.mu.RUnlock()
+	for _, middleware := range middlewares {
+		if middleware(ctx) {
+			return
+		}
+	}
+
 	if !isCmd {
 		return
 	}
@@ -108,7 +128,6 @@ func (h *Handler) processMessage(client *whatsmeow.Client, evt *events.Message) 
 		return
 	}
 
-	ctx := hc.NewCtx(client, evt, prefix, cmd, args)
 	fmt.Printf("[CMD] %s > %s%s\n", formatSenderInfo(evt), prefix, cmd)
 	command.Run(ctx)
 }
