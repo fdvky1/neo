@@ -1,14 +1,20 @@
 package media
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
+	hc "neo/context"
+
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 )
 
 type exifData struct {
@@ -115,4 +121,92 @@ func resolveExif(args []string) (string, bool) {
 	}
 
 	return tempPath, true
+}
+
+func cmdStickerImage(ctx *hc.Ctx, img *waProto.ImageMessage, exifPath string, webpPath string) error {
+	data, err := ctx.Client().Download(context.Background(), img)
+	if err != nil {
+		return err
+	}
+	
+	convertCmd := exec.Command("convert", "-", "-resize", "512x512", "-background", "none", "-compose", "Copy", "-gravity", "center", "-extent", "512x512", "-quality", "100", "png:-")
+	convertCmd.Stdin = bytes.NewReader(data)
+	var convertBuf bytes.Buffer
+	convertCmd.Stdout = &convertBuf
+	if err := convertCmd.Run(); err != nil {
+		return fmt.Errorf("convert failed: %w", err)
+	}
+
+	cwebpCmd := exec.Command("cwebp", "-quiet", "-mt", "-exact", "-q", "100", "-m", "6", "-alpha_q", "100", "-o", "-", "--", "-")
+	cwebpCmd.Stdin = &convertBuf
+	var cwebpBuf bytes.Buffer
+	cwebpCmd.Stdout = &cwebpBuf
+	if err := cwebpCmd.Run(); err != nil {
+		return fmt.Errorf("cwebp failed: %w", err)
+	}
+
+	tmpWebp := webpPath + ".tmp.webp"
+	if err := os.WriteFile(tmpWebp, cwebpBuf.Bytes(), 0644); err != nil {
+		return err
+	}
+	defer os.Remove(tmpWebp)
+
+	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
+	if err := webpmuxCmd.Run(); err != nil {
+		return fmt.Errorf("webpmux failed: %w", err)
+	}
+	
+	return nil
+}
+
+func cmdStickerVideo(ctx *hc.Ctx, video *waProto.VideoMessage, exifPath string, webpPath string) error {
+	data, err := ctx.Client().Download(context.Background(), video)
+	if err != nil {
+		return err
+	}
+	
+	tmpWebp := webpPath + ".tmp.webp"
+	defer os.Remove(tmpWebp)
+	
+	ffmpegCmd := exec.Command("ffmpeg",
+		"-y", "-hide_banner", "-loglevel", "error",
+		"-i", "pipe:0", "-f", "mp4",
+		"-ss", "00:00:00", "-t", "00:00:15",
+		"-vf", "fps=10,scale=720:-1:flags=lanczos:force_original_aspect_ratio=increase,crop=512:512,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,setsar=1",
+		"-compression_level", "6",
+		"-q:v", "60", "-loop", "0",
+		"-preset", "picture", "-an", "-fps_mode", "auto",
+		"-f", "webp", tmpWebp,
+	)
+	ffmpegCmd.Stdin = bytes.NewReader(data)
+	if err := ffmpegCmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg failed: %w", err)
+	}
+	
+	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
+	if err := webpmuxCmd.Run(); err != nil {
+		return fmt.Errorf("webpmux failed: %w", err)
+	}
+	
+	return nil
+}
+
+func cmdStickerRewrite(ctx *hc.Ctx, sticker *waProto.StickerMessage, exifPath string, webpPath string) error {
+	data, err := ctx.Client().Download(context.Background(), sticker)
+	if err != nil {
+		return err
+	}
+	
+	tmpWebp := webpPath + ".tmp.webp"
+	if err := os.WriteFile(tmpWebp, data, 0644); err != nil {
+		return err
+	}
+	defer os.Remove(tmpWebp)
+
+	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
+	if err := webpmuxCmd.Run(); err != nil {
+		return fmt.Errorf("webpmux failed: %w", err)
+	}
+	
+	return nil
 }
