@@ -31,44 +31,47 @@ var Sticker = &core.Command{
 		quoted := hc.GetQuotedMessage(msg)
 
 		var err error
-		var stickerData []byte
+		var rawWebp []byte
 		var mediaData []byte
 
 		if img := msg.GetImageMessage(); img != nil {
 			mediaData, err = ctx.Client().Download(context.Background(), img)
 			if err == nil {
-				stickerData, err = helper.ConvertImageToSticker(mediaData, exifPath)
+				rawWebp, err = helper.ConvertImageToWebp(mediaData)
 			}
 		} else if img := quoted.GetImageMessage(); img != nil && quoted != nil {
 			mediaData, err = ctx.Client().Download(context.Background(), img)
 			if err == nil {
-				stickerData, err = helper.ConvertImageToSticker(mediaData, exifPath)
+				rawWebp, err = helper.ConvertImageToWebp(mediaData)
 			}
 		} else if vid := msg.GetVideoMessage(); vid != nil {
 			mediaData, err = ctx.Client().Download(context.Background(), vid)
 			if err == nil {
-				stickerData, err = helper.ConvertVideoToSticker(mediaData, exifPath)
+				rawWebp, err = helper.ConvertVideoToWebp(mediaData)
 			}
 		} else if vid := quoted.GetVideoMessage(); vid != nil && quoted != nil {
 			mediaData, err = ctx.Client().Download(context.Background(), vid)
 			if err == nil {
-				stickerData, err = helper.ConvertVideoToSticker(mediaData, exifPath)
+				rawWebp, err = helper.ConvertVideoToWebp(mediaData)
 			}
 		} else if smsg := quoted.GetStickerMessage(); smsg != nil && quoted != nil {
-			mediaData, err = ctx.Client().Download(context.Background(), smsg)
-			if err == nil {
-				stickerData, err = helper.RewriteStickerExif(mediaData, exifPath)
-			}
+			rawWebp, err = ctx.Client().Download(context.Background(), smsg)
 		} else {
 			ctx.Reply("error: reply to image/video/sticker or send with caption")
 			return
 		}
 
 		if err != nil {
-			ctx.Reply(fmt.Sprintf("error: %v", err))
+			ctx.Reply(fmt.Sprintf("error processing media: %v", err))
 			return
 		}
 
-		ctx.SendSticker(stickerData)
+		finalSticker, err := helper.InjectExif(rawWebp, exifPath)
+		if err != nil {
+			ctx.Reply(fmt.Sprintf("error injecting EXIF: %v", err))
+			return
+		}
+
+		ctx.SendSticker(finalSticker)
 	},
 }

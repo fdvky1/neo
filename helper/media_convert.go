@@ -10,10 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func ConvertImageToSticker(imgData []byte, exifPath string) ([]byte, error) {
-	webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", uuid.New().String()))
-	defer os.Remove(webpPath)
-
+func ConvertImageToWebp(imgData []byte) ([]byte, error) {
 	convertCmd := exec.Command("convert", "-", "-resize", "512x512", "-background", "none", "-compose", "Copy", "-gravity", "center", "-extent", "512x512", "-quality", "100", "png:-")
 	convertCmd.Stdin = bytes.NewReader(imgData)
 	var convertBuf bytes.Buffer
@@ -30,26 +27,12 @@ func ConvertImageToSticker(imgData []byte, exifPath string) ([]byte, error) {
 		return nil, fmt.Errorf("cwebp failed: %w", err)
 	}
 
-	tmpWebp := webpPath + ".tmp.webp"
-	if err := os.WriteFile(tmpWebp, cwebpBuf.Bytes(), 0644); err != nil {
-		return nil, err
-	}
-	defer os.Remove(tmpWebp)
-
-	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
-	if err := webpmuxCmd.Run(); err != nil {
-		return nil, fmt.Errorf("webpmux failed: %w", err)
-	}
-
-	return os.ReadFile(webpPath)
+	return cwebpBuf.Bytes(), nil
 }
 
-func ConvertVideoToSticker(vidData []byte, exifPath string) ([]byte, error) {
+func ConvertVideoToWebp(vidData []byte) ([]byte, error) {
 	webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", uuid.New().String()))
 	defer os.Remove(webpPath)
-
-	tmpWebp := webpPath + ".tmp.webp"
-	defer os.Remove(tmpWebp)
 
 	ffmpegCmd := exec.Command("ffmpeg",
 		"-y", "-hide_banner", "-loglevel", "error",
@@ -59,22 +42,17 @@ func ConvertVideoToSticker(vidData []byte, exifPath string) ([]byte, error) {
 		"-compression_level", "6",
 		"-q:v", "60", "-loop", "0",
 		"-preset", "picture", "-an", "-fps_mode", "auto",
-		"-f", "webp", tmpWebp,
+		"-f", "webp", webpPath,
 	)
 	ffmpegCmd.Stdin = bytes.NewReader(vidData)
 	if err := ffmpegCmd.Run(); err != nil {
 		return nil, fmt.Errorf("ffmpeg failed: %w", err)
 	}
 
-	webpmuxCmd := exec.Command("webpmux", "-set", "exif", exifPath, tmpWebp, "-o", webpPath)
-	if err := webpmuxCmd.Run(); err != nil {
-		return nil, fmt.Errorf("webpmux failed: %w", err)
-	}
-
 	return os.ReadFile(webpPath)
 }
 
-func RewriteStickerExif(webpData []byte, exifPath string) ([]byte, error) {
+func InjectExif(webpData []byte, exifPath string) ([]byte, error) {
 	webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", uuid.New().String()))
 	defer os.Remove(webpPath)
 
