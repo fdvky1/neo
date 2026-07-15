@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	hc "neo/context"
+	"neo/core"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 )
@@ -209,4 +210,58 @@ func cmdStickerRewrite(ctx *hc.Ctx, sticker *waProto.StickerMessage, exifPath st
 	}
 	
 	return nil
+}
+
+func init() { core.Default.Register(Sticker) }
+
+var Sticker = &core.Command{
+	Name:        "sticker",
+	Aliases:     []string{"s", "stiker"},
+	Category:    "media",
+	Description: "Create sticker from image/video or rewrite existing sticker EXIF",
+	Run: func(ctx *hc.Ctx) {
+		ctx.React("👌")
+
+		exifPath, cleanupExif := resolveExif(ctx.Arguments())
+		defer func() {
+			if cleanupExif {
+				os.Remove(exifPath)
+			}
+		}()
+
+		webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", uuid.New().String()))
+		defer os.Remove(webpPath)
+
+		msg := ctx.Message()
+		quoted := hc.GetQuotedMessage(msg)
+
+		var err error
+		if msg.GetImageMessage() != nil {
+			err = cmdStickerImage(ctx, msg.GetImageMessage(), exifPath, webpPath)
+		} else if quoted != nil && quoted.GetImageMessage() != nil {
+			err = cmdStickerImage(ctx, quoted.GetImageMessage(), exifPath, webpPath)
+		} else if msg.GetVideoMessage() != nil {
+			err = cmdStickerVideo(ctx, msg.GetVideoMessage(), exifPath, webpPath)
+		} else if quoted != nil && quoted.GetVideoMessage() != nil {
+			err = cmdStickerVideo(ctx, quoted.GetVideoMessage(), exifPath, webpPath)
+		} else if quoted != nil && quoted.GetStickerMessage() != nil {
+			err = cmdStickerRewrite(ctx, quoted.GetStickerMessage(), exifPath, webpPath)
+		} else {
+			ctx.Reply("error: reply to image/video/sticker or send with caption")
+			return
+		}
+
+		if err != nil {
+			ctx.Reply(fmt.Sprintf("error: %v", err))
+			return
+		}
+
+		stickerData, err := os.ReadFile(webpPath)
+		if err != nil {
+			ctx.Reply(fmt.Sprintf("error: failed to read temp sticker: %v", err))
+			return
+		}
+
+		ctx.SendSticker(stickerData)
+	},
 }
