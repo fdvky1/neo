@@ -9,6 +9,8 @@ import (
 	hc "neo/context"
 	"neo/core"
 	"neo/helper"
+
+	"go.mau.fi/whatsmeow"
 )
 
 func init() { core.Default.Register(Sticker) }
@@ -50,29 +52,34 @@ var Sticker = &core.Command{
 		var err error
 		var rawWebp []byte
 		var mediaData []byte
+		var downloadable whatsmeow.DownloadableMessage
+		var mediaType string
 
-		if img := msg.GetImageMessage(); img != nil {
-			mediaData, err = ctx.Client().Download(context.Background(), img)
+		switch {
+		case msg.GetImageMessage() != nil:
+			downloadable, mediaType = msg.GetImageMessage(), "image"
+		case quoted != nil && quoted.GetImageMessage() != nil:
+			downloadable, mediaType = quoted.GetImageMessage(), "image"
+		case msg.GetVideoMessage() != nil:
+			downloadable, mediaType = msg.GetVideoMessage(), "video"
+		case quoted != nil && quoted.GetVideoMessage() != nil:
+			downloadable, mediaType = quoted.GetVideoMessage(), "video"
+		case quoted != nil && quoted.GetStickerMessage() != nil:
+			downloadable, mediaType = quoted.GetStickerMessage(), "sticker"
+		}
+
+		if downloadable != nil {
+			mediaData, err = ctx.Client().Download(context.Background(), downloadable)
 			if err == nil {
-				rawWebp, err = helper.ConvertImageToWebp(mediaData)
+				switch mediaType {
+				case "image":
+					rawWebp, err = helper.ConvertImageToWebp(mediaData)
+				case "video":
+					rawWebp, err = helper.ConvertVideoToWebp(mediaData)
+				case "sticker":
+					rawWebp = mediaData
+				}
 			}
-		} else if img := quoted.GetImageMessage(); img != nil && quoted != nil {
-			mediaData, err = ctx.Client().Download(context.Background(), img)
-			if err == nil {
-				rawWebp, err = helper.ConvertImageToWebp(mediaData)
-			}
-		} else if vid := msg.GetVideoMessage(); vid != nil {
-			mediaData, err = ctx.Client().Download(context.Background(), vid)
-			if err == nil {
-				rawWebp, err = helper.ConvertVideoToWebp(mediaData)
-			}
-		} else if vid := quoted.GetVideoMessage(); vid != nil && quoted != nil {
-			mediaData, err = ctx.Client().Download(context.Background(), vid)
-			if err == nil {
-				rawWebp, err = helper.ConvertVideoToWebp(mediaData)
-			}
-		} else if smsg := quoted.GetStickerMessage(); smsg != nil && quoted != nil {
-			rawWebp, err = ctx.Client().Download(context.Background(), smsg)
 		} else {
 			ctx.Reply("error: reply to image/video/sticker or send with caption")
 			return
