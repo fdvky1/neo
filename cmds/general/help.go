@@ -19,8 +19,8 @@ var (
 	menuOnce   sync.Once
 )
 
-// buildMenuCache generates the static portion of the help menu
-func buildMenuCache(prefix string) {
+// buildMenuCache generates the static portion of the help menu with a {{PREFIX}} placeholder
+func buildMenuCache() {
 	var sb strings.Builder
 
 	cmdMap := make(map[string][]string)
@@ -39,7 +39,7 @@ func buildMenuCache(prefix string) {
 			if i == len(cmds)-1 {
 				branch = "└"
 			}
-			sb.WriteString(fmt.Sprintf("%s %s%s\n", branch, prefix, cmdName))
+			sb.WriteString(fmt.Sprintf("%s {{PREFIX}}%s\n", branch, cmdName))
 		}
 	}
 
@@ -82,11 +82,14 @@ var Help = &core.Command{
 
 		// Calculate the static command layout part only once
 		menuOnce.Do(func() {
-			buildMenuCache(prefix)
+			buildMenuCache()
 		})
+
+		// Replace placeholder with the dynamically used prefix
+		finalMenu := strings.ReplaceAll(cachedMenu, "{{PREFIX}}", prefix)
 
 		header := fmt.Sprintf("%s *%s*👋\n📬 Need help? Here are all of my commands\n", greeting, pushName)
 
-		ctx.Reply(header + cachedMenu)
+		ctx.Reply(header + finalMenu)
 	},
 }
