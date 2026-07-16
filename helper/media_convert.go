@@ -3,11 +3,7 @@ package helper
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
-
-	"github.com/google/uuid"
 )
 
 func ConvertImageToWebp(imgData []byte) ([]byte, error) {
@@ -35,35 +31,27 @@ func ConvertImageToWebp(imgData []byte) ([]byte, error) {
 }
 
 func ConvertVideoToWebp(vidData []byte) ([]byte, error) {
-	id := uuid.New().String()
-	gifPath := filepath.Join("temp", fmt.Sprintf("%s.gif", id))
-	webpPath := filepath.Join("temp", fmt.Sprintf("%s.webp", id))
-
-	defer os.Remove(gifPath)
-	defer os.Remove(webpPath)
-
 	ffmpegCmd := exec.Command("ffmpeg",
 		"-y", "-hide_banner", "-loglevel", "error",
 		"-i", "pipe:0",
 		"-ss", "00:00:00", "-t", "00:00:15",
+		"-vcodec", "libwebp",
 		"-vf", "fps=10,scale=720:-1:flags=lanczos:force_original_aspect_ratio=increase,crop=512:512,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,setsar=1",
 		"-loop", "0",
+		"-preset", "default",
 		"-an",
-		"-f", "gif", gifPath,
+		"-f", "webp", "pipe:1",
 	)
-	var stderr bytes.Buffer
-	ffmpegCmd.Stderr = &stderr
+
 	ffmpegCmd.Stdin = bytes.NewReader(vidData)
+	var outBuf bytes.Buffer
+	var stderr bytes.Buffer
+	ffmpegCmd.Stdout = &outBuf
+	ffmpegCmd.Stderr = &stderr
+
 	if err := ffmpegCmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg failed: %w, stderr: %s", err, stderr.String())
+		return nil, fmt.Errorf("ffmpeg direct convert failed: %w, stderr: %s", err, stderr.String())
 	}
 
-	gif2webpCmd := exec.Command("gif2webp", "-quiet", "-q", "60", "-m", "6", gifPath, "-o", webpPath)
-	var g2wStderr bytes.Buffer
-	gif2webpCmd.Stderr = &g2wStderr
-	if err := gif2webpCmd.Run(); err != nil {
-		return nil, fmt.Errorf("gif2webp failed: %w, stderr: %s", err, g2wStderr.String())
-	}
-
-	return os.ReadFile(webpPath)
+	return outBuf.Bytes(), nil
 }
