@@ -3,6 +3,7 @@ package general
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	hc "neo/context"
@@ -11,6 +12,38 @@ import (
 
 func init() {
 	core.Default.Register(Help)
+}
+
+var (
+	cachedMenu string
+	menuOnce   sync.Once
+)
+
+// buildMenuCache generates the static portion of the help menu
+func buildMenuCache(prefix string) {
+	var sb strings.Builder
+
+	cmdMap := make(map[string][]string)
+	for _, cmd := range core.Default.GetCommands() {
+		cat := cmd.Category
+		if cat == "" {
+			cat = "general"
+		}
+		cmdMap[cat] = append(cmdMap[cat], cmd.Name)
+	}
+
+	for cat, cmds := range cmdMap {
+		sb.WriteString(fmt.Sprintf("\n*📃%s*\n", strings.ToUpper(cat)))
+		for i, cmdName := range cmds {
+			branch := "├"
+			if i == len(cmds)-1 {
+				branch = "└"
+			}
+			sb.WriteString(fmt.Sprintf("%s %s%s\n", branch, prefix, cmdName))
+		}
+	}
+
+	cachedMenu = sb.String()
 }
 
 var Help = &core.Command{
@@ -42,38 +75,18 @@ var Help = &core.Command{
 			pushName = "User"
 		}
 
-		// Header
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("%s *%s*👋\n📬 Need help? Here are all of my commands\n", greeting, pushName))
-
-		// Group commands by category (simulate json object array appending)
-		cmdMap := make(map[string][]string)
-		for _, cmd := range core.Default.GetCommands() {
-			cat := cmd.Category
-			if cat == "" {
-				cat = "general"
-			}
-			cmdMap[cat] = append(cmdMap[cat], cmd.Name)
-		}
-
 		prefix := ctx.Prefix()
 		if prefix == "" {
-			// fallback if they called it somehow internally without prefix
 			prefix = "."
 		}
 
-		// Print categories
-		for cat, cmds := range cmdMap {
-			sb.WriteString(fmt.Sprintf("\n*📃%s*\n", strings.ToUpper(cat)))
-			for i, cmdName := range cmds {
-				branch := "├"
-				if i == len(cmds)-1 {
-					branch = "└"
-				}
-				sb.WriteString(fmt.Sprintf("%s %s%s\n", branch, prefix, cmdName))
-			}
-		}
+		// Calculate the static command layout part only once
+		menuOnce.Do(func() {
+			buildMenuCache(prefix)
+		})
 
-		ctx.Reply(sb.String())
+		header := fmt.Sprintf("%s *%s*👋\n📬 Need help? Here are all of my commands\n", greeting, pushName)
+
+		ctx.Reply(header + cachedMenu)
 	},
 }
