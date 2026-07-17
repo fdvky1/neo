@@ -47,13 +47,17 @@ func (c *Ctx) UploadVideo(bytes []byte, caption string) (*waE2E.VideoMessage, er
 }
 
 func (c *Ctx) UploadAudio(bytes []byte) (*waE2E.AudioMessage, error) {
-	mime := mimetype.Detect(bytes)
+	mime := mimetype.Detect(bytes).String()
+	if mime == "video/mp4" {
+		mime = "audio/mp4"
+	}
+
 	resp, err := c.client.Upload(stdctx.Background(), bytes, whatsmeow.MediaAudio)
 	if err != nil {
 		return nil, err
 	}
 	return &waE2E.AudioMessage{
-		Mimetype:      proto.String(mime.String()),
+		Mimetype:      proto.String(mime),
 		URL:           &resp.URL,
 		DirectPath:    &resp.DirectPath,
 		MediaKey:      resp.MediaKey,

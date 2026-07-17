@@ -1,10 +1,23 @@
 package helper
 
 import (
+	"bytes"
+	"os/exec"
 	"strings"
 
 	hc "neo/context"
 )
+
+func ConvertToMP3(data []byte) ([]byte, error) {
+	cmd := exec.Command("ffmpeg", "-i", "pipe:0", "-f", "mp3", "-ab", "128k", "pipe:1")
+	cmd.Stdin = bytes.NewReader(data)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
 
 func SendMedia(ctx *hc.Ctx, data []byte, mime, caption string) {
 	switch {

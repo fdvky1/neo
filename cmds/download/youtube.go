@@ -128,29 +128,50 @@ func formatSize(bytes int) string {
 }
 
 func downloadByFormatID(ctx *hc.Ctx, res *api.YtDownloadResult, fid string) {
+	var targetURL string
+	var isAudioOnly bool
+
 	// Look for video
 	for _, f := range res.VideoFormats {
 		if f.FormatID == fid && f.URL != "" {
-			data, mime, err := api.Download(f.URL)
-			if err != nil {
-				ctx.Reply(fmt.Sprintf("Download failed: %v", err))
-				return
-			}
-			helper.SendMedia(ctx, data, mime, res.Title) // using existing sendMedia handling
-			return
+			targetURL = f.URL
+			break
 		}
 	}
-	// Look for audio
-	for _, f := range res.AudioFormats {
-		if f.FormatID == fid && f.URL != "" {
-			data, mime, err := api.Download(f.URL)
-			if err != nil {
-				ctx.Reply(fmt.Sprintf("Download failed: %v", err))
-				return
+
+	// Look for audio if not found in video
+	if targetURL == "" {
+		for _, f := range res.AudioFormats {
+			if f.FormatID == fid && f.URL != "" {
+				targetURL = f.URL
+				isAudioOnly = true
+				break
 			}
-			helper.SendMedia(ctx, data, mime, res.Title)
-			return
 		}
 	}
-	ctx.Reply("Format " + fid + " not found")
+
+	if targetURL == "" {
+		ctx.Reply("Format " + fid + " not found")
+		return
+	}
+
+	data, mime, err := api.Download(targetURL)
+	if err != nil {
+		ctx.Reply(fmt.Sprintf("Download failed: %v", err))
+		return
+	}
+
+	// Detect if it is audio from googlevideo (which is often fragmented MP4/DASH),
+	// pipe it to ffmpeg to get standard MP3 so WhatsApp can play it
+	if isAudioOnly && strings.Contains(targetURL, "googlevideo.com") {
+		convertedData, err := helper.ConvertToMP3(data)
+		if err == nil {
+			data = convertedData
+			mime = "audio/mpeg"
+		} else {
+			fmt.Printf("Failed to convert audio using ffmpeg: %v\n", err)
+		}
+	}
+
+	helper.SendMedia(ctx, data, mime, res.Title)
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,10 +83,21 @@ func (c *Client) Get(path string, params map[string]string, target any) error {
 
 // Download fetches a URL and returns the raw bytes and MIME type.
 func Download(rawURL string) ([]byte, string, error) {
+	// fast-path for googlevideo.com to bypass throttling via chunked requests
+	if strings.Contains(rawURL, "googlevideo.com") {
+		return downloadChunked(rawURL)
+	}
+
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("download request: %w", err)
 	}
+
+	// Add standard browser headers to avoid getting throttled/blocked
+	// by CDNs like googlevideo.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("DNT", "1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -115,5 +127,69 @@ func Download(rawURL string) ([]byte, string, error) {
 		mime = mimetype.Detect(data).String()
 	}
 
+	// fmt.Printf("Downloaded %d bytes from %s, MIME: %s\n", len(data), rawURL, mime)
 	return data, mime, nil
+}
+
+func downloadChunked(rawURL string) ([]byte, string, error) {
+	chunkSize := 1024 * 1024 // 1MB
+	offset := 0
+
+	var buf bytes.Buffer
+	var mime string
+
+	for {
+		req, err := http.NewRequest("GET", rawURL, nil)
+		if err != nil {
+			return nil, "", err
+		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+chunkSize-1))
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, "", err
+		}
+
+		if resp.StatusCode != 200 && resp.StatusCode != 206 {
+			if resp.StatusCode == 416 && offset > 0 {
+				resp.Body.Close()
+				break
+			}
+			resp.Body.Close()
+			return nil, "", fmt.Errorf("bad status: %d", resp.StatusCode)
+		}
+
+		if offset == 0 {
+			mime = resp.Header.Get("Content-Type")
+		}
+
+		data, err := io.ReadAll(io.LimitReader(resp.Body, int64(chunkSize+1)))
+		resp.Body.Close()
+		if err != nil {
+			return nil, "", err
+		}
+
+		if int64(buf.Len()+len(data)) > MaxDownloadBytes {
+			return nil, "", fmt.Errorf("download too large: over %d bytes", MaxDownloadBytes)
+		}
+
+		buf.Write(data)
+
+		if len(data) < chunkSize || resp.StatusCode == 200 {
+			break
+		}
+		offset += len(data)
+	}
+
+	detectedMime := mime
+	if detectedMime == "" || detectedMime == "application/octet-stream" {
+		detectedMime = mimetype.Detect(buf.Bytes()).String()
+	}
+
+	// fmt.Printf("Downloaded %d chunks (%d bytes) from %s, MIME: %s\n", (offset/chunkSize)+1, buf.Len(), rawURL, detectedMime)
+	return buf.Bytes(), detectedMime, nil
 }
