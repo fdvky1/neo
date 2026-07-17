@@ -7,7 +7,6 @@ import (
 	"neo/api"
 	hc "neo/context"
 	"neo/core"
-	"neo/helper"
 )
 
 type instagramVideo struct {
@@ -47,23 +46,30 @@ var Instagram = &core.Command{
 			return
 		}
 
-		mediaURL := ""
-		if len(res.Videos) > 0 {
-			mediaURL = res.Videos[0].Src
-		} else if len(res.Images) > 0 {
-			mediaURL = res.Images[0]
-		}
-		if mediaURL == "" {
-			ctx.Reply("No media found")
-			return
-		}
-
-		data, mime, err := api.Download(mediaURL)
-		if err != nil {
-			ctx.Reply(fmt.Sprintf("Download failed: %v", err))
-			return
+		for _, video := range res.Videos {
+			data, _, err := api.Download(video.Src)
+			if err != nil {
+				ctx.Reply(fmt.Sprintf("Download failed: %v", err))
+				return
+			}
+			// if i == 0 {
+			// 	ctx.SendVideo(data, fmt.Sprintf("Instagram Video\n%s", url))
+			// } else {
+			ctx.SendVideo(data, "")
+			// }
 		}
 
-		helper.SendMedia(ctx, data, mime, "")
+		for _, imgURL := range res.Images {
+			data, _, err := api.Download(imgURL)
+			if err != nil {
+				ctx.Reply(fmt.Sprintf("Download failed: %v", err))
+				return
+			}
+			// if i == 0 {
+			// 	ctx.SendImage(data, fmt.Sprintf("Instagram Image\n%s", url))
+			// } else {
+			ctx.SendImage(data, "")
+			// }
+		}
 	},
 }

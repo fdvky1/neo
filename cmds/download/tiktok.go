@@ -7,7 +7,6 @@ import (
 	"neo/api"
 	hc "neo/context"
 	"neo/core"
-	"neo/helper"
 )
 
 type tiktokResult struct {
@@ -31,7 +30,7 @@ var TikTok = &core.Command{
 			return
 		}
 
-		ttRegex := regexp.MustCompile(`(?i)(?:tiktok\.com)\/(?:@[\w.-]+\/video\/|v\/|t\/)([0-9]+)`)
+		ttRegex := regexp.MustCompile(`(?i)^https?://(?:[\w-]+\.)?tiktok\.com(?:/.*)?$`)
 		if !ttRegex.MatchString(url) {
 			ctx.Reply("Invalid TikTok URL")
 			return
@@ -44,24 +43,28 @@ var TikTok = &core.Command{
 			return
 		}
 
-		mediaURL := ""
+		caption := fmt.Sprintf("@%s\n%s", res.Username, res.Description)
 		if len(res.VideoURL) > 0 {
-			mediaURL = res.VideoURL[0]
+			data, _, err := api.Download(res.VideoURL[0])
+			if err != nil {
+				ctx.Reply(fmt.Sprintf("Download failed: %v", err))
+				return
+			}
+			ctx.SendVideo(data, caption)
 		} else if len(res.ImageURL) > 0 {
-			mediaURL = res.ImageURL[0]
-		}
-		if mediaURL == "" {
+			go func() {
+				for _, imgURL := range res.ImageURL {
+					data, _, err := api.Download(imgURL)
+					if err != nil {
+						ctx.Reply(fmt.Sprintf("Download failed: %v", err))
+						return
+					}
+					ctx.SendImage(data, caption)
+				}
+			}()
+		} else {
 			ctx.Reply("No media found")
 			return
 		}
-
-		data, mime, err := api.Download(mediaURL)
-		if err != nil {
-			ctx.Reply(fmt.Sprintf("Download failed: %v", err))
-			return
-		}
-
-		caption := fmt.Sprintf("@%s\n%s", res.Username, res.Description)
-		helper.SendMedia(ctx, data, mime, caption)
 	},
 }
