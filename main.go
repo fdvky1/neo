@@ -10,6 +10,7 @@ import (
 	_ "neo/cmds"
 	"neo/core"
 
+	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
@@ -33,6 +34,9 @@ func init() {
 }
 
 func main() {
+	vips.Startup(nil)
+	defer vips.Shutdown()
+
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	ctx := context.Background()
 	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", os.Getenv("SESSION_PATH")), dbLog)

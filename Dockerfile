@@ -1,8 +1,8 @@
 # Stage: build
 FROM golang:1.25.5-alpine AS build
 
-# Install build dependencies (CGO often needed for go-sqlite3)
-RUN apk add --no-cache gcc musl-dev
+# Install build dependencies (CGO for go-sqlite3 + govips)
+RUN apk add --no-cache gcc musl-dev vips-dev
 
 WORKDIR /app
 
@@ -17,11 +17,10 @@ RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-w -s" -o /app/neo .
 # Stage: prod
 FROM alpine:latest AS prod
 
-# Install required tools (cwebp/gif2webp via libwebp-tools, ffmpeg, imagemagick)
+# Install runtime dependencies (vips for image processing, ffmpeg for video)
 RUN apk add --no-cache \
     ffmpeg \
-    libwebp-tools \
-    imagemagick \
+    vips \
     ca-certificates \
     tzdata
 

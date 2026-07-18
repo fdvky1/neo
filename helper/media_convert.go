@@ -4,30 +4,47 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+
+	"github.com/davidbyttow/govips/v2/vips"
 )
 
 func ConvertImageToWebp(imgData []byte) ([]byte, error) {
-	convertCmd := exec.Command("convert", "-", "-resize", "512x512", "-background", "none", "-compose", "Copy", "-gravity", "center", "-extent", "512x512", "-quality", "100", "png:-")
-	convertCmd.Stdin = bytes.NewReader(imgData)
-	var convertBuf bytes.Buffer
-	var stderr bytes.Buffer
-	convertCmd.Stdout = &convertBuf
-	convertCmd.Stderr = &stderr
-	if err := convertCmd.Run(); err != nil {
-		return nil, fmt.Errorf("convert failed: %w, stderr: %s", err, stderr.String())
+	img, err := vips.NewImageFromBuffer(imgData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load image: %w", err)
+	}
+	defer img.Close()
+
+	if !img.HasAlpha() {
+		if err := img.AddAlpha(); err != nil {
+			return nil, fmt.Errorf("failed to add alpha: %w", err)
+		}
 	}
 
-	cwebpCmd := exec.Command("cwebp", "-quiet", "-mt", "-exact", "-q", "100", "-m", "6", "-alpha_q", "100", "-o", "-", "--", "-")
-	cwebpCmd.Stdin = &convertBuf
-	var cwebpBuf bytes.Buffer
-	var cwebStderr bytes.Buffer
-	cwebpCmd.Stdout = &cwebpBuf
-	cwebpCmd.Stderr = &cwebStderr
-	if err := cwebpCmd.Run(); err != nil {
-		return nil, fmt.Errorf("cwebp failed: %w, stderr: %s", err, cwebStderr.String())
+	if err := img.ThumbnailWithSize(512, 512, vips.InterestingNone, vips.SizeBoth); err != nil {
+		return nil, fmt.Errorf("failed to resize: %w", err)
 	}
 
-	return cwebpBuf.Bytes(), nil
+	// Center in 512x512 canvas with transparent background (fit: contain)
+	w, h := img.Width(), img.Height()
+	if w != 512 || h != 512 {
+		left := (512 - w) / 2
+		top := (512 - h) / 2
+		if err := img.EmbedBackgroundRGBA(left, top, 512, 512, &vips.ColorRGBA{R: 0, G: 0, B: 0, A: 0}); err != nil {
+			return nil, fmt.Errorf("failed to embed: %w", err)
+		}
+	}
+
+	webpBuf, _, err := img.ExportWebp(&vips.WebpExportParams{
+		Quality:         100,
+		Lossless:        false,
+		ReductionEffort: 6,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to export webp: %w", err)
+	}
+
+	return webpBuf, nil
 }
 
 func ConvertVideoToWebp(vidData []byte) ([]byte, error) {
