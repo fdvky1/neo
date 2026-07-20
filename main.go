@@ -8,7 +8,9 @@ import (
 	"syscall"
 
 	_ "neo/cmds"
+	"neo/cmds/group"
 	"neo/core"
+	"neo/database"
 
 	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/joho/godotenv"
@@ -36,6 +38,12 @@ func init() {
 func main() {
 	vips.Startup(nil)
 	defer vips.Shutdown()
+
+	go func() {
+		database.InitDB(os.Getenv("SQLITE_PATH"))
+		database.AutoMigrate()
+		group.LoadCache()
+	}()
 
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	ctx := context.Background()
