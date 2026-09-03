@@ -2,7 +2,12 @@ package context
 
 import (
 	stdctx "context"
+	"encoding/json"
 
+	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waAICommon"
+	"go.mau.fi/whatsmeow/proto/waAICommonDeprecated"
 	waCommon "go.mau.fi/whatsmeow/proto/waCommon"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
@@ -32,8 +37,8 @@ func (c *Ctx) Send(text string) {
 	c.client.SendMessage(stdctx.Background(), c.event.Info.Chat, msg)
 }
 
-func (c *Ctx) SendMessage(msg *waE2E.Message) {
-	c.client.SendMessage(stdctx.Background(), c.event.Info.Chat, msg)
+func (c *Ctx) SendMessage(msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) {
+	c.client.SendMessage(stdctx.Background(), c.event.Info.Chat, msg, extra...)
 }
 
 func (c *Ctx) React(emoji string) {
@@ -103,4 +108,59 @@ func (c *Ctx) SendPresence(composing bool) {
 	}
 	_ = c.client.SubscribePresence(stdctx.Background(), c.event.Info.Chat)
 	_ = c.client.SendChatPresence(stdctx.Background(), c.event.Info.Chat, state, waTypes.ChatPresenceMediaText)
+}
+
+func (c *Ctx) SendInteractiveHTML(htmlContent string) (whatsmeow.SendResponse, error) {
+	responseID := uuid.New().String()
+
+	payload := map[string]interface{}{
+		"response_id": responseID,
+		"sections": []map[string]interface{}{
+			{
+				"view_model": map[string]interface{}{
+					"primitive": map[string]interface{}{
+						"__typename":      "GenAIaeacdsnwHtmlPrimitive",
+						"payload":         htmlContent,
+						"trusted_sources": []string{},
+					},
+					"__typename": "GenAISingleLayoutViewModel",
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return whatsmeow.SendResponse{}, err
+	}
+
+	msg := &waE2E.Message{
+		BotForwardedMessage: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{
+				RichResponseMessage: &waE2E.AIRichResponseMessage{
+					MessageType: waAICommonDeprecated.AIRichResponseMessageType(1).Enum(),
+					Submessages: []*waAICommonDeprecated.AIRichResponseSubMessage{
+						{
+							MessageType: waAICommonDeprecated.AIRichResponseSubMessageType(2).Enum(),
+							MessageText: proto.String("Game Center"),
+						},
+					},
+					UnifiedResponse: &waAICommon.AIRichResponseUnifiedResponse{
+						Data: data,
+					},
+					ContextInfo: &waE2E.ContextInfo{
+						ForwardingScore: proto.Uint32(1),
+						IsForwarded:     proto.Bool(true),
+						ForwardedAiBotMessageInfo: &waAICommon.ForwardedAIBotMessageInfo{
+							BotJID: proto.String("867051314767696@bot"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return c.client.SendMessage(stdctx.Background(), c.event.Info.Chat, msg, whatsmeow.SendRequestExtra{
+		ID: responseID,
+	})
 }
